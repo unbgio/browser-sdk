@@ -4,14 +4,14 @@
 	"description": "Browser-first background removal SDK with one-liner and client APIs.",
 	"license": "MIT",
 	"type": "module",
-	"author": "",
+	"author": "UNBG (https://github.com/unbgio)",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/jefff/unbg.git"
+		"url": "git+https://github.com/unbgio/browser-sdk.git"
 	},
-	"homepage": "https://github.com/jefff/unbg#readme",
+	"homepage": "https://github.com/unbgio/browser-sdk#readme",
 	"bugs": {
-		"url": "https://github.com/jefff/unbg/issues"
+		"url": "https://github.com/unbgio/browser-sdk/issues"
 	},
 	"keywords": [
 		"background-removal",
