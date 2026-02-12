@@ -1,0 +1,67 @@
+{
+	"name": "@unbg/browser-sdk",
+	"version": "1.0.0",
+	"description": "Browser-first background removal SDK with one-liner and client APIs.",
+	"license": "MIT",
+	"type": "module",
+	"author": "",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/jefff/unbg.git"
+	},
+	"homepage": "https://github.com/jefff/unbg#readme",
+	"bugs": {
+		"url": "https://github.com/jefff/unbg/issues"
+	},
+	"keywords": [
+		"background-removal",
+		"image-processing",
+		"webgpu",
+		"browser",
+		"transformers-js"
+	],
+	"sideEffects": false,
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE",
+		"THIRD_PARTY_NOTICES.md"
+	],
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"require": "./dist/index.cjs"
+		}
+	},
+	"scripts": {
+		"build": "tsup",
+		"clean": "rimraf dist coverage",
+		"lint": "eslint . --ext .ts",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run --coverage",
+		"test:watch": "vitest",
+		"test:browser": "playwright test",
+		"verify:release": "npm run lint && npm run typecheck && npm run test && npm run build && npm pack --dry-run",
+		"prepublishOnly": "npm run verify:release"
+	},
+	"dependencies": {
+		"@huggingface/transformers": "3.8.1"
+	},
+	"devDependencies": {
+		"@playwright/test": "1.58.2",
+		"@types/node": "25.2.3",
+		"@typescript-eslint/eslint-plugin": "8.55.0",
+		"@typescript-eslint/parser": "8.55.0",
+		"eslint": "9.39.2",
+		"happy-dom": "20.6.1",
+		"rimraf": "6.1.2",
+		"tsup": "8.5.1",
+		"typescript": "5.9.3",
+		"vitest": "4.0.18",
+		"@vitest/coverage-v8": "4.0.18"
+	}
+}
