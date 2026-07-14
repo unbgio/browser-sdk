@@ -1,4 +1,10 @@
-import { AutoModel, AutoProcessor, env, type Processor, type PreTrainedModel, type ProgressInfo } from '@huggingface/transformers';
+import {
+	AutoProcessor,
+	env,
+	PreTrainedModel,
+	type Processor,
+	type ProgressInfo
+} from '@huggingface/transformers';
 
 import {
 	DEFAULT_HF_REMOTE_HOST,
@@ -177,8 +183,10 @@ async function loadModelBundleWithConfiguredRuntime(
 	for (const candidate of candidates) {
 		progressByFile.clear();
 		try {
+			// BRIA identifies its model type by class name. Transformers.js 4.2 auto-mapping
+			// rejects that form, while generic AutoModel only falls back here with a warning.
 			const [modelResult, processorResult] = await Promise.allSettled([
-				AutoModel.from_pretrained(candidate.modelId, {
+				PreTrainedModel.from_pretrained(candidate.modelId, {
 					device: candidate.device,
 					dtype: candidate.dtype,
 					subfolder: 'onnx',
