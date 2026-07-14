@@ -41,6 +41,9 @@ export interface PerformanceConfig {
 	mobileMaxInferencePixels?: number;
 	desktopMaxInferencePixels?: number;
 	alphaApplyChunkRows?: number;
+	maxInputBytes?: number;
+	maxInputPixels?: number;
+	maxBatchSize?: number;
 }
 
 export interface ClientConfig {
@@ -66,7 +69,10 @@ export interface RemoveOutputOptions {
 
 export interface RemoveOptions {
 	background?: 'transparent' | string;
+	/** @deprecated Encode the returned canvas with canvasToBlob() or canvasToBlobUrl(). */
 	output?: RemoveOutputOptions;
+	/** Cancels caller-side preprocessing or a pending worker request. */
+	signal?: AbortSignal;
 }
 
 export interface RemoveResult {
@@ -109,38 +115,48 @@ export interface PipelineHooks {
 }
 
 export interface WorkerClientOptions {
-	config?: ClientConfig;
+	/** Worker-safe configuration. Function hooks cannot be structured-cloned. */
+	config?: WorkerRuntimeConfig;
 	mode?: WorkerExecutionMode;
 	workerFactory?: () => Worker;
+	/** Maximum time to wait for a worker RPC response. Defaults to 10 minutes. */
+	requestTimeoutMs?: number;
 }
 
-export type WorkerRequestType = 'load' | 'remove' | 'removeMany' | 'getLoadedModelLabel' | 'dispose';
+export type WorkerRuntimeConfig = Omit<ClientConfig, 'hooks'>;
+
+export interface WorkerRuntimeScope {
+	postMessage(message: WorkerMessage, transfer?: Transferable[]): void;
+	onmessage: ((event: MessageEvent<unknown>) => void) | null;
+}
+
+export type WorkerRequestType = 'initialize' | 'load' | 'remove' | 'removeMany' | 'dispose';
 
 export interface WorkerRequestBase {
 	requestId: string;
 	type: WorkerRequestType;
 }
 
+export interface WorkerInitializeRequest extends WorkerRequestBase {
+	type: 'initialize';
+	config?: WorkerRuntimeConfig;
+}
+
 export interface WorkerLoadRequest extends WorkerRequestBase {
 	type: 'load';
-	options?: LoadOptions;
 }
 
 export interface WorkerRemoveRequest extends WorkerRequestBase {
 	type: 'remove';
 	input: Exclude<RemoveBackgroundInput, HTMLImageElement | HTMLCanvasElement>;
-	options?: RemoveOptions;
+	options?: Omit<RemoveOptions, 'signal'>;
 }
 
 export interface WorkerRemoveManyRequest extends WorkerRequestBase {
 	type: 'removeMany';
 	inputs: Array<Exclude<RemoveBackgroundInput, HTMLImageElement | HTMLCanvasElement>>;
-	options?: RemoveOptions;
+	options?: Omit<RemoveOptions, 'signal'>;
 	batchOptions?: BatchProcessOptions;
-}
-
-export interface WorkerGetLoadedModelLabelRequest extends WorkerRequestBase {
-	type: 'getLoadedModelLabel';
 }
 
 export interface WorkerDisposeRequest extends WorkerRequestBase {
@@ -148,10 +164,10 @@ export interface WorkerDisposeRequest extends WorkerRequestBase {
 }
 
 export type WorkerRequest =
+	| WorkerInitializeRequest
 	| WorkerLoadRequest
 	| WorkerRemoveRequest
 	| WorkerRemoveManyRequest
-	| WorkerGetLoadedModelLabelRequest
 	| WorkerDisposeRequest;
 
 export interface WorkerRemovePayload {
@@ -161,6 +177,7 @@ export interface WorkerRemovePayload {
 }
 
 export interface WorkerResponse {
+	type: 'response';
 	requestId: string;
 	ok: boolean;
 	error?: string;
@@ -168,3 +185,11 @@ export interface WorkerResponse {
 	result?: WorkerRemovePayload;
 	results?: WorkerRemovePayload[];
 }
+
+export interface WorkerProgressMessage {
+	type: 'progress';
+	requestId: string;
+	progress: ModelLoadProgress;
+}
+
+export type WorkerMessage = WorkerResponse | WorkerProgressMessage;

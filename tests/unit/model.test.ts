@@ -81,4 +81,57 @@ describe('model runtime and loading', () => {
 			name: 'ModelLoadError'
 		});
 	});
+
+	it('disposes partially loaded candidate resources when its peer fails', async () => {
+		const modelDispose = vi.fn().mockResolvedValue(undefined);
+		autoModelFromPretrained.mockResolvedValue({ id: 'partial-model', dispose: modelDispose });
+		autoProcessorFromPretrained.mockRejectedValue(new Error('processor failed'));
+		const { loadModelBundle } = await import('../../src/model');
+
+		await expect(loadModelBundle({ model: { strategy: 'wasm-q8' } })).rejects.toMatchObject({
+			name: 'ModelLoadError'
+		});
+		expect(modelDispose).toHaveBeenCalledTimes(1);
+	});
+
+	it('awaits model and processor disposal', async () => {
+		const modelDispose = vi.fn().mockResolvedValue(undefined);
+		const processorDispose = vi.fn().mockResolvedValue(undefined);
+		const { disposeModelBundle } = await import('../../src/model');
+
+		await disposeModelBundle({
+			model: { dispose: modelDispose } as never,
+			processor: { dispose: processorDispose } as never
+		});
+		expect(modelDispose).toHaveBeenCalledTimes(1);
+		expect(processorDispose).toHaveBeenCalledTimes(1);
+	});
+
+	it('serializes model downloads while applying each client runtime config', async () => {
+		let finishFirst!: (value: { id: string }) => void;
+		autoModelFromPretrained
+			.mockReturnValueOnce(new Promise((resolve) => (finishFirst = resolve)))
+			.mockResolvedValueOnce({ id: 'second-model' });
+		autoProcessorFromPretrained.mockResolvedValue({ id: 'processor' });
+		const { loadModelBundle } = await import('../../src/model');
+
+		const first = loadModelBundle({
+			model: { strategy: 'wasm-q8' },
+			runtime: { remoteHost: 'https://first.example.com' }
+		});
+		await vi.waitFor(() => expect(autoModelFromPretrained).toHaveBeenCalledTimes(1));
+		const second = loadModelBundle({
+			model: { strategy: 'wasm-q8' },
+			runtime: { remoteHost: 'https://second.example.com' }
+		});
+		await Promise.resolve();
+
+		expect(autoModelFromPretrained).toHaveBeenCalledTimes(1);
+		expect(mockedEnv.remoteHost).toBe('https://first.example.com');
+		finishFirst({ id: 'first-model' });
+		await first;
+		await vi.waitFor(() => expect(autoModelFromPretrained).toHaveBeenCalledTimes(2));
+		expect(mockedEnv.remoteHost).toBe('https://second.example.com');
+		await second;
+	});
 });

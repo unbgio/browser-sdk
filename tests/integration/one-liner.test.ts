@@ -4,7 +4,7 @@ const removeMock = vi.fn();
 const removeManyMock = vi.fn();
 const loadMock = vi.fn();
 const getLoadedModelLabelMock = vi.fn();
-const disposeMock = vi.fn();
+const disposeMock = vi.fn().mockResolvedValue(undefined);
 const createClientMock = vi.fn(() => ({
 	remove: removeMock,
 	removeMany: removeManyMock,
@@ -23,7 +23,7 @@ describe('one-liner API', () => {
 		removeManyMock.mockReset();
 		loadMock.mockReset();
 		getLoadedModelLabelMock.mockReset();
-		disposeMock.mockReset();
+		disposeMock.mockReset().mockResolvedValue(undefined);
 		createClientMock.mockClear();
 	});
 
@@ -62,9 +62,51 @@ describe('one-liner API', () => {
 		expect(removeManyMock).toHaveBeenCalledTimes(1);
 		expect(getLoadedModelLabel()).toBe('Loaded Candidate');
 
-		dispose();
+		await dispose();
 		expect(disposeMock).toHaveBeenCalledTimes(1);
-		disposeDefaultClient();
+		await disposeDefaultClient();
 		expect(disposeMock).toHaveBeenCalledTimes(1);
+	});
+
+	it('starts disposal when replacing the singleton with a different config', async () => {
+		removeMock.mockResolvedValue({
+			canvas: document.createElement('canvas'),
+			width: 1,
+			height: 1
+		});
+		const { disposeDefaultClient, removeBackground } = await import('../../src/removeBackground');
+
+		await removeBackground(new Blob(['a']), undefined, { model: { revision: 'one' } });
+		await removeBackground(new Blob(['b']), undefined, { model: { revision: 'two' } });
+
+		expect(createClientMock).toHaveBeenCalledTimes(2);
+		expect(disposeMock).toHaveBeenCalledTimes(1);
+		await disposeDefaultClient();
+		expect(disposeMock).toHaveBeenCalledTimes(2);
+	});
+
+	it('waits for clients already being disposed when clearing the singleton', async () => {
+		removeMock.mockResolvedValue({
+			canvas: document.createElement('canvas'),
+			width: 1,
+			height: 1
+		});
+		let finishPreviousDisposal!: () => void;
+		disposeMock
+			.mockReturnValueOnce(new Promise<void>((resolve) => (finishPreviousDisposal = resolve)))
+			.mockResolvedValueOnce(undefined);
+		const { disposeDefaultClient, removeBackground } = await import('../../src/removeBackground');
+
+		await removeBackground(new Blob(['a']), undefined, { model: { revision: 'first' } });
+		await removeBackground(new Blob(['b']), undefined, { model: { revision: 'second' } });
+		const disposing = disposeDefaultClient();
+		let completed = false;
+		void disposing.then(() => (completed = true));
+		await Promise.resolve();
+		expect(completed).toBe(false);
+
+		finishPreviousDisposal();
+		await disposing;
+		expect(disposeMock).toHaveBeenCalledTimes(2);
 	});
 });

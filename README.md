@@ -43,7 +43,7 @@ const result = await client.remove('https://example.com/photo.jpg', {
 	background: '#ffffff'
 });
 
-client.dispose();
+await client.dispose();
 ```
 
 ### Progressive Config Model
@@ -96,7 +96,10 @@ Creates a dedicated client instance with explicit lifecycle (`load`, `remove`, `
 - `runtime`: transformers.js runtime knobs (cache, local/remote model behavior)
   - default remote source is Hugging Face public host (`https://huggingface.co`)
   - default path template is `/{model}/resolve/{revision}/`
-- `performance`: resize thresholds and alpha-apply chunk size
+- `performance`: resize thresholds, alpha-apply chunk size, and resource limits
+  - `maxInputBytes`: maximum encoded input size (default: 50 MiB)
+  - `maxInputPixels`: maximum decoded image area (default: 40 million pixels)
+  - `maxBatchSize`: maximum inputs accepted by one batch (default: 100)
 - `hooks`:
   - `beforeProcess(input, options?)`
   - `afterProcess(result, context)`
@@ -116,14 +119,50 @@ const client = createClient({
 ### `RemoveOptions`
 
 - `background`: `'transparent'` or CSS color string
-- `output`: output metadata options (type/quality)
+- `signal`: cancels preprocessing or a pending worker request
+- To encode the returned canvas, pass type/quality to `canvasToBlob()` or `canvasToBlobUrl()`.
 
 ### Worker / Off-main-thread Mode
 
-`createWorkerClient({ mode, workerFactory, config })` supports automatic fallback:
+Create a dedicated module-worker entry:
 
-- If `Worker` and `OffscreenCanvas` are available and `workerFactory` is provided, operations run through the worker client.
-- Otherwise, it automatically falls back to the main-thread client with the same return shape.
+```ts
+// background-removal.worker.ts
+import { attachWorkerRuntime } from '@unbg/browser-sdk';
+
+attachWorkerRuntime(self);
+```
+
+Then construct the worker from application code:
+
+```ts
+import { createWorkerClient } from '@unbg/browser-sdk';
+
+const client = createWorkerClient({
+	mode: 'auto',
+	workerFactory: () =>
+		new Worker(new URL('./background-removal.worker.ts', import.meta.url), {
+			type: 'module'
+		})
+});
+
+try {
+	const result = await client.remove(file);
+	// Use result.canvas.
+} finally {
+	await client.dispose();
+}
+```
+
+`createWorkerClient({ mode, workerFactory, config })` supports three explicit modes:
+
+- `auto` uses the worker when `Worker`, `OffscreenCanvas`, and `workerFactory` are available; otherwise it falls back to the main thread.
+- `worker` requires all worker prerequisites and throws when they are unavailable.
+- `main-thread` always uses a regular client.
+
+Worker configuration excludes function hooks because functions cannot be structured-cloned. Use
+`createClient()` when `beforeProcess`, `afterProcess`, or `telemetry` hooks are required. Passing an
+`ImageBitmap` to a worker-backed removal transfers ownership to the worker; do not reuse that bitmap.
 
 ## Browser Compatibility & Performance
 
@@ -140,8 +179,9 @@ licensed separately under `bria-rmbg-1.4`.
 - Model page: <https://huggingface.co/briaai/RMBG-1.4>
 - See `THIRD_PARTY_NOTICES.md` for attribution and licensing context.
 
-If you use the default model, you must comply with BRIA's model terms,
-including any commercial licensing requirements.
+The default model is offered for non-commercial use under BRIA's model terms.
+Commercial use requires a separate agreement with BRIA. Choosing another model
+does not transfer this SDK's MIT license to that model.
 
 ## Error Handling
 
@@ -150,6 +190,8 @@ Public error classes:
 - `ModelLoadError`
 - `UnsupportedInputError`
 - `InferenceError`
+- `ClientDisposedError`
+- `ResourceLimitError`
 
 ## Troubleshooting
 
@@ -162,9 +204,12 @@ Public error classes:
 
 ## Testing
 
+Development and release verification use Node.js 24.18.0 LTS and npm 12.0.1.
+
 ```bash
 npm run test
 npm run test:browser
+npm run verify:release
 ```
 
 ## Semver Policy

@@ -9,3 +9,11 @@ export class UnsupportedInputError extends Error {
 export class InferenceError extends Error {
 	override name = 'InferenceError';
 }
+
+export class ClientDisposedError extends Error {
+	override name = 'ClientDisposedError';
+}
+
+export class ResourceLimitError extends Error {
+	override name = 'ResourceLimitError';
+}

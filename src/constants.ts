@@ -8,6 +8,11 @@ export const DEFAULT_MODEL_REVISION = 'main';
 export const DEFAULT_MOBILE_MAX_INFERENCE_PIXELS = 1024 * 1024;
 export const DEFAULT_DESKTOP_MAX_INFERENCE_PIXELS = 1920 * 1080;
 export const DEFAULT_ALPHA_APPLY_CHUNK_ROWS = 256;
+export const DEFAULT_MAX_INPUT_BYTES = 50 * 1024 * 1024;
+export const DEFAULT_MAX_INPUT_PIXELS = 40_000_000;
+export const DEFAULT_MAX_BATCH_SIZE = 100;
+export const DEFAULT_WORKER_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+export const DEFAULT_WORKER_DISPOSE_TIMEOUT_MS = 5_000;
 
 export const DEFAULT_CLIENT_CONFIG: Required<Omit<ClientConfig, 'hooks' | 'preset'>> = {
 	model: {
@@ -26,7 +31,10 @@ export const DEFAULT_CLIENT_CONFIG: Required<Omit<ClientConfig, 'hooks' | 'prese
 	performance: {
 		mobileMaxInferencePixels: DEFAULT_MOBILE_MAX_INFERENCE_PIXELS,
 		desktopMaxInferencePixels: DEFAULT_DESKTOP_MAX_INFERENCE_PIXELS,
-		alphaApplyChunkRows: DEFAULT_ALPHA_APPLY_CHUNK_ROWS
+		alphaApplyChunkRows: DEFAULT_ALPHA_APPLY_CHUNK_ROWS,
+		maxInputBytes: DEFAULT_MAX_INPUT_BYTES,
+		maxInputPixels: DEFAULT_MAX_INPUT_PIXELS,
+		maxBatchSize: DEFAULT_MAX_BATCH_SIZE
 	}
 };
 

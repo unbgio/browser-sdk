@@ -25,7 +25,7 @@ async function clientExample(imageUrl: string): Promise<void> {
 	console.log('Client output:', blobUrl, secondBlobUrl);
 	revokeBlobUrl(blobUrl);
 	revokeBlobUrl(secondBlobUrl);
-	client.dispose();
+	await client.dispose();
 }
 
 await oneLinerExample('https://example.com/photo.jpg');

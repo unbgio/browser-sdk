@@ -11,12 +11,24 @@ import type {
 
 let singletonClient: ReturnType<typeof createClient> | null = null;
 let singletonConfigSignature = '';
+const pendingDisposals = new Set<Promise<void>>();
+
+function scheduleDisposal(client: ReturnType<typeof createClient>): Promise<void> {
+	const disposal = client.dispose();
+	pendingDisposals.add(disposal);
+	void disposal
+		.catch(() => undefined)
+		.finally(() => pendingDisposals.delete(disposal));
+	return disposal;
+}
 
 function getSingletonClient(config?: ClientConfig): ReturnType<typeof createClient> {
 	const signature = getClientConfigSignature(config);
 	if (!singletonClient || singletonConfigSignature !== signature) {
+		const previousClient = singletonClient;
 		singletonClient = createClient(config);
 		singletonConfigSignature = signature;
+		if (previousClient) void scheduleDisposal(previousClient);
 	}
 	return singletonClient;
 }
@@ -60,17 +72,26 @@ export function getLoadedModelLabel(config?: ClientConfig): string | null {
 	return client.getLoadedModelLabel();
 }
 
-export function disposeDefaultClient(): void {
-	if (!singletonClient) return;
-	singletonClient.dispose();
+export async function disposeDefaultClient(): Promise<void> {
+	const client = singletonClient;
 	singletonClient = null;
 	singletonConfigSignature = '';
+	if (client) void scheduleDisposal(client);
+	const disposals = [...pendingDisposals];
+	if (disposals.length === 0) return;
+	const results = await Promise.allSettled(disposals);
+	const failures = results
+		.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+		.map((result) => result.reason);
+	if (failures.length > 0) {
+		throw new AggregateError(failures, 'One or more background-removal clients failed to dispose.');
+	}
 }
 
 export async function load(options?: LoadOptions, config?: ClientConfig): Promise<void> {
 	return await loadModel(options, config);
 }
 
-export function dispose(): void {
-	disposeDefaultClient();
+export async function dispose(): Promise<void> {
+	await disposeDefaultClient();
 }

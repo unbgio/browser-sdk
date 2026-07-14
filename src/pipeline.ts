@@ -3,6 +3,8 @@ import { RawImage, type Processor, type PreTrainedModel } from '@huggingface/tra
 import {
 	DEFAULT_ALPHA_APPLY_CHUNK_ROWS,
 	DEFAULT_DESKTOP_MAX_INFERENCE_PIXELS,
+	DEFAULT_MAX_INPUT_BYTES,
+	DEFAULT_MAX_INPUT_PIXELS,
 	DEFAULT_MOBILE_MAX_INFERENCE_PIXELS
 } from './constants';
 import { resolveClientConfig } from './config';
@@ -33,6 +35,12 @@ async function yieldToMainThread(): Promise<void> {
 	await new Promise<void>((resolve) => {
 		setTimeout(resolve, 0);
 	});
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+	if (!signal?.aborted) return;
+	if (typeof signal.throwIfAborted === 'function') signal.throwIfAborted();
+	throw signal.reason ?? new DOMException('The operation was aborted.', 'AbortError');
 }
 
 type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
@@ -87,13 +95,19 @@ export async function removeBackgroundWithModel(
 	const processedInput = resolvedConfig.hooks?.beforeProcess
 		? await resolvedConfig.hooks.beforeProcess(input, options)
 		: input;
-	const normalized = await normalizeInput(processedInput);
 	const alphaApplyChunkRows =
 		resolvedConfig.performance?.alphaApplyChunkRows ?? DEFAULT_ALPHA_APPLY_CHUNK_ROWS;
 	const mobileMaxInferencePixels =
 		resolvedConfig.performance?.mobileMaxInferencePixels ?? DEFAULT_MOBILE_MAX_INFERENCE_PIXELS;
 	const desktopMaxInferencePixels =
 		resolvedConfig.performance?.desktopMaxInferencePixels ?? DEFAULT_DESKTOP_MAX_INFERENCE_PIXELS;
+	const maxInputBytes = resolvedConfig.performance?.maxInputBytes ?? DEFAULT_MAX_INPUT_BYTES;
+	const maxInputPixels = resolvedConfig.performance?.maxInputPixels ?? DEFAULT_MAX_INPUT_PIXELS;
+	const normalized = await normalizeInput(processedInput, {
+		maxInputBytes,
+		maxInputPixels,
+		signal: options?.signal
+	});
 
 	try {
 		const { isMobile, isWeakDevice } = detectDeviceProfile();
@@ -112,7 +126,9 @@ export async function removeBackgroundWithModel(
 				: await normalized.rawImage.resize(inferenceSize.width, inferenceSize.height);
 
 		const { pixel_values } = await processor(inferenceImage);
+		throwIfAborted(options?.signal);
 		const modelResult = await model({ input: pixel_values });
+		throwIfAborted(options?.signal);
 		const output = (modelResult as { output: Array<{ squeeze: () => any }> }).output;
 		const raw = output[0].squeeze();
 		const minVal = raw.min().item() as number;
@@ -133,6 +149,7 @@ export async function removeBackgroundWithModel(
 
 		ctx.drawImage(normalized.drawableImage as CanvasImageSource, 0, 0);
 		for (let y = 0; y < canvas.height; y += alphaApplyChunkRows) {
+			throwIfAborted(options?.signal);
 			const chunkHeight = Math.min(alphaApplyChunkRows, canvas.height - y);
 			const pixelData = ctx.getImageData(0, y, canvas.width, chunkHeight);
 			const chunkPixelCount = canvas.width * chunkHeight;
@@ -160,6 +177,7 @@ export async function removeBackgroundWithModel(
 		}
 		return result;
 	} catch (error) {
+		if (error instanceof Error && error.name === 'AbortError') throw error;
 		throw new InferenceError(
 			error instanceof Error ? `Background removal failed: ${error.message}` : 'Background removal failed'
 		);

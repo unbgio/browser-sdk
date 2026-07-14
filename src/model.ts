@@ -12,7 +12,7 @@ import { detectDeviceProfile } from './device';
 import { ModelLoadError } from './errors';
 import type { ClientConfig, ModelCandidateConfig, ModelConfig, ModelLoadProgress } from './types';
 
-interface LoadedModelBundle {
+export interface LoadedModelBundle {
 	model: PreTrainedModel;
 	processor: Processor;
 	label: string;
@@ -119,7 +119,31 @@ export function configureTransformerRuntime(config?: ClientConfig): void {
 	env.remotePathTemplate = resolved.runtime?.remotePathTemplate ?? DEFAULT_MODEL_REMOTE_PATH_TEMPLATE;
 }
 
-export async function loadModelBundle(
+// transformers.js stores runtime settings in a process-wide singleton. Model
+// downloads must therefore be configured and started serially so concurrent
+// clients cannot silently load from each other's hosts or cache settings.
+let modelLoadQueue: Promise<void> = Promise.resolve();
+
+async function disposeResource(resource: unknown): Promise<void> {
+	if ((typeof resource !== 'object' && typeof resource !== 'function') || resource === null) return;
+	const dispose = (resource as { dispose?: () => unknown }).dispose;
+	if (typeof dispose === 'function') {
+		await dispose.call(resource);
+	}
+}
+
+export async function disposeModelBundle(
+	bundle: Pick<LoadedModelBundle, 'model' | 'processor'> & { label?: string | null }
+): Promise<void> {
+	const results = await Promise.allSettled([
+		disposeResource(bundle.model),
+		disposeResource(bundle.processor)
+	]);
+	const rejection = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+	if (rejection) throw rejection.reason;
+}
+
+async function loadModelBundleWithConfiguredRuntime(
 	config: ClientConfig | undefined,
 	onProgress?: (progress: ModelLoadProgress) => void
 ): Promise<LoadedModelBundle> {
@@ -151,6 +175,7 @@ export async function loadModelBundle(
 	};
 
 	for (const candidate of candidates) {
+		progressByFile.clear();
 		try {
 			const [modelResult, processorResult] = await Promise.allSettled([
 				AutoModel.from_pretrained(candidate.modelId, {
@@ -167,6 +192,12 @@ export async function loadModelBundle(
 			]);
 
 			if (modelResult.status === 'rejected' || processorResult.status === 'rejected') {
+				await Promise.allSettled([
+					modelResult.status === 'fulfilled' ? disposeResource(modelResult.value) : Promise.resolve(),
+					processorResult.status === 'fulfilled'
+						? disposeResource(processorResult.value)
+						: Promise.resolve()
+				]);
 				if (modelResult.status === 'rejected') {
 					throw modelResult.reason;
 				}
@@ -191,4 +222,23 @@ export async function loadModelBundle(
 			? `Failed to load model bundle: ${lastError.message}`
 			: 'Failed to load model bundle'
 	);
+}
+
+export async function loadModelBundle(
+	config: ClientConfig | undefined,
+	onProgress?: (progress: ModelLoadProgress) => void
+): Promise<LoadedModelBundle> {
+	const previousLoad = modelLoadQueue;
+	let releaseQueue!: () => void;
+	modelLoadQueue = new Promise<void>((resolve) => {
+		releaseQueue = resolve;
+	});
+
+	await previousLoad;
+	try {
+		configureTransformerRuntime(config);
+		return await loadModelBundleWithConfiguredRuntime(config, onProgress);
+	} finally {
+		releaseQueue();
+	}
 }

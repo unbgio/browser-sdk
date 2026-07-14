@@ -175,4 +175,29 @@ describe('removeBackgroundWithModel', () => {
 		expect(cleanupSpy).toHaveBeenCalled();
 		getContextSpy.mockRestore();
 	});
+
+	it('honors cancellation between preprocessing and inference', async () => {
+		const controller = new AbortController();
+		const cleanupSpy = vi.fn();
+		normalizeInputMock.mockResolvedValue({
+			rawImage: { width: 2, height: 2 },
+			drawableImage: document.createElement('canvas'),
+			cleanup: cleanupSpy
+		});
+		detectDeviceProfileMock.mockReturnValue({ isMobile: false, isWeakDevice: false });
+		const processor = vi.fn().mockImplementation(async () => {
+			controller.abort();
+			return { pixel_values: 'pixels' };
+		});
+		const model = vi.fn();
+		const { removeBackgroundWithModel } = await import('../../src/pipeline');
+
+		await expect(
+			removeBackgroundWithModel(model as never, processor as never, undefined, new Blob(['x']), {
+				signal: controller.signal
+			})
+		).rejects.toMatchObject({ name: 'AbortError' });
+		expect(model).not.toHaveBeenCalled();
+		expect(cleanupSpy).toHaveBeenCalledTimes(1);
+	});
 });

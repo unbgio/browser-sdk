@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fromURLMock = vi.fn();
 
@@ -37,8 +37,19 @@ describe('normalizeInput', () => {
 			width: 4,
 			height: 4
 		});
-		(globalThis as any).Image = FakeImage;
+		vi.stubGlobal('Image', FakeImage);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue(
+				new Response(new Blob(['image'], { type: 'image/png' }), {
+					status: 200,
+					headers: { 'content-type': 'image/png' }
+				})
+			)
+		);
 	});
+
+	afterEach(() => vi.unstubAllGlobals());
 
 	it('normalizes URL string input', async () => {
 		const { normalizeInput } = await import('../../src/input');
@@ -78,5 +89,33 @@ describe('normalizeInput', () => {
 
 		createSpy.mockRestore();
 		revokeSpy.mockRestore();
+	});
+
+	it('rejects decoded images above the configured pixel limit', async () => {
+		fromURLMock.mockResolvedValue({ width: 11, height: 10 });
+		const { normalizeInput } = await import('../../src/input');
+		await expect(
+			normalizeInput('https://example.com/large.png', {
+				maxInputBytes: 1_000,
+				maxInputPixels: 100
+			})
+		).rejects.toMatchObject({ name: 'ResourceLimitError' });
+	});
+
+	it('rejects URL responses above the configured byte limit before decoding', async () => {
+		vi.mocked(fetch).mockResolvedValueOnce(
+			new Response('oversized', {
+				status: 200,
+				headers: { 'content-length': '100' }
+			})
+		);
+		const { normalizeInput } = await import('../../src/input');
+		await expect(
+			normalizeInput('https://example.com/large.png', {
+				maxInputBytes: 10,
+				maxInputPixels: 100
+			})
+		).rejects.toMatchObject({ name: 'ResourceLimitError' });
+		expect(fromURLMock).not.toHaveBeenCalled();
 	});
 });

@@ -24,10 +24,19 @@ export type {
 	TelemetryEvent,
 	WorkerClientOptions,
 	WorkerExecutionMode,
+	WorkerMessage,
 	WorkerRemovePayload,
 	WorkerRequest,
 	WorkerRequestType,
-	WorkerResponse
+	WorkerResponse,
+	WorkerRuntimeConfig,
+	WorkerRuntimeScope
 } from './types';
 export type { RemoveBackgroundClient } from './client';
-export { InferenceError, ModelLoadError, UnsupportedInputError } from './errors';
+export {
+	ClientDisposedError,
+	InferenceError,
+	ModelLoadError,
+	ResourceLimitError,
+	UnsupportedInputError
+} from './errors';
