@@ -50,7 +50,7 @@
 		"prepublishOnly": "npm run verify:release"
 	},
 	"dependencies": {
-		"@huggingface/transformers": "4.2.0"
+		"@huggingface/transformers": "4.3.0"
 	},
 	"overrides": {
 		"esbuild": "0.28.1",
